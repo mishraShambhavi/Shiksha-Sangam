@@ -1,17 +1,21 @@
+#final file having all 4 options
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
-import os
 import google.generativeai as genai
 import asyncio
 import wikipedia
 from googlesearch import search
+import fitz  # PyMuPDF
+from transformers import BartForConditionalGeneration, BartTokenizer
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +33,36 @@ prompt_pdf = """ Answer the question as detailed as possible from the provided c
 prompt_youtube = """You are Youtube video summarizer. You will be taking the transcript text
 and summarizing the entire video and providing the important summary in points
 within 250 words. Please provide the summary of the text given here:  """
+
+# Load the BART model and tokenizer
+model = BartForConditionalGeneration.from_pretrained("facebook/bart-base")
+tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
+
+
+# Function to extract text from PDF
+def extract_text_from_pdf(uploaded_file):
+    text = ""
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    for page in doc:
+        text += page.get_text()
+    return text
+
+
+def generate_pdf_summary(uploaded_file):
+    # Extract text from uploaded PDF
+    text = extract_text_from_pdf(uploaded_file)
+
+    if text.strip() != "":
+        # Tokenize input text
+        inputs = tokenizer([text], max_length=1024, return_tensors="pt", truncation=True)
+
+        # Generate summary
+        summary_ids = model.generate(inputs['input_ids'], num_beams=4, max_length=150, early_stopping=True)
+        summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+        return summary
+    else:
+        return "The PDF file is empty or the text could not be extracted."
 
 
 def get_pdf_text(pdf_docs):
@@ -116,29 +150,37 @@ def search_google(topic, num_links=5):
         return f"Error: {e}"
 
 
-def main():
-    st.set_page_config("Shiksha Sangam")
-    st.title("Shiksha Sangam")
-    st.write(
-        "Welcome to Your Academic Helper! This powerful tool seamlessly integrates advanced chat capabilities "
-        "for PDF documents and a YouTube video Summarizer, along with a Find Resources section,"
-        " providing you with comprehensive study support. Engage in enlightening discussions with your PDFs "
-        ", while the Summarizer distills extensive videos into essential points for "
-        "effortless understanding and finally Find Resources section, where you can effortlessly discover "
-        "relevant links and materials related to your provided topic. Tailored for students and researchers alike, "
-        "our platform serves as an "
-        "indispensable resource, facilitating efficient studying and improved comprehension.")
-    option = st.radio("Choose an option:", ("Multiple PDF Chat", "YouTube Summarizer", "Find Resources"))
+import streamlit as st
 
-    if option == "Multiple PDF Chat":
-        st.header("Chat with Multiple PDF's")
-        user_question = st.text_input("Enter Any Topic From The PDF")
+
+def main():
+    st.set_page_config(page_title="Shiksha Sangam", layout="wide")
+
+    st.title("🌟 Shiksha Sangam 🌟")
+    st.markdown(
+        """
+        Welcome to **Your Academic Helper!** This powerful tool seamlessly integrates advanced chat capabilities 
+        for PDF documents, YouTube video Summarizer, Find Resources section and PDF Summarizer,
+        providing you with comprehensive study support. Engage in enlightening discussions with your PDFs,
+        while the Summarizer distills extensive videos into essential points for effortless understanding.
+        Finally, use the Find Resources section to effortlessly discover relevant links and materials related 
+        to your provided topic. Tailored for students and researchers alike, our platform serves as an 
+        indispensable resource, facilitating efficient studying and improved comprehension.
+        """
+    )
+
+    menu_options = ["Multiple PDF Chat", "YouTube Summarizer", "Find Resources", "PDF Summarization"]
+    selected_option = st.selectbox("Choose an option:", menu_options)
+
+    if selected_option == "Multiple PDF Chat":
+        st.header("💬 Chat with Multiple PDFs")
+        user_question = st.text_input("Enter Any Topic From the PDF")
 
         if user_question:
             user_input(user_question)
 
         with st.sidebar:
-            st.title("Menu:")
+            st.header("📑 PDF Menu")
             pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button",
                                         accept_multiple_files=True)
             if st.button("Submit & Process"):
@@ -148,8 +190,8 @@ def main():
                     get_vector_store(text_chunks)
                     st.success("Done")
 
-    elif option == "YouTube Summarizer":
-        st.header("Get Detailed Notes and Summaries From YouTube Videos")
+    elif selected_option == "YouTube Summarizer":
+        st.header("📺 Get Detailed Notes and Summaries From YouTube Videos")
         youtube_link = st.text_input("Enter YouTube Video Link:")
 
         if st.button("Get Detailed Notes"):
@@ -157,27 +199,36 @@ def main():
                 transcript_text = extract_transcript_details(youtube_link)
                 if transcript_text:
                     summary = generate_gemini_content(transcript_text, prompt_youtube)
-                    st.markdown("## Detailed Notes:")
+                    st.markdown("## 📋 Detailed Notes:")
                     st.write(summary)
             except Exception as e:
                 st.error(f"Error retrieving transcript or generating summary: {e}")
 
-    elif option == "Find Resources":
-        st.header("Find Resources")
+    elif selected_option == "Find Resources":
+        st.header("🔍 Find Resources")
         topic = st.text_input("Enter a Topic:")
         if st.button("Search"):
             wikipedia_summary, wikipedia_url = search_wikipedia(topic)
             if wikipedia_url:
-                st.markdown(f"### Wikipedia Summary:")
+                st.markdown("### 📖 Wikipedia Summary:")
                 st.write(wikipedia_summary)
                 st.markdown(f"[Link to Wikipedia Article]({wikipedia_url})")
             else:
                 st.write(wikipedia_summary)
 
             google_links = search_google(topic)
-            st.markdown("### Google Search Results:")
+            st.markdown("### 🌐 Google Search Results:")
             for link in google_links:
                 st.markdown(f"[{link}]({link})")
+
+    elif selected_option == "PDF Summarization":
+        st.header("📝 PDF Summarization")
+        uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+
+        if uploaded_file is not None:
+            if st.button("Generate Summary"):
+                summary = generate_pdf_summary(uploaded_file)
+                st.write("Summary:", summary)
 
 
 if __name__ == "__main__":
