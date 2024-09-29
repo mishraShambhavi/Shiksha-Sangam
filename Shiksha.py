@@ -1,6 +1,3 @@
-#final file having all 4 options
-import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -10,12 +7,18 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
+import os
 import google.generativeai as genai
 import asyncio
 import wikipedia
 from googlesearch import search
 import fitz  # PyMuPDF
 from transformers import BartForConditionalGeneration, BartTokenizer
+from gesturecv import run_gesture_math_solver
+from app import calculate_perplexity, calculate_burstiness, plot_most_common_words, plot_repeated_words
+from test import calculate_perplexity, calculate_burstiness as calculate_burstiness_gpt, plot_top_repeated_words
+
+
 
 # Load environment variables
 load_dotenv()
@@ -149,38 +152,30 @@ def search_google(topic, num_links=5):
     except Exception as e:
         return f"Error: {e}"
 
-
-import streamlit as st
-
-
+st.set_page_config(page_title="Shiksha Sangam", layout="wide")
 def main():
-    st.set_page_config(page_title="Shiksha Sangam", layout="wide")
+    # st.set_page_config("Shiksha Sangam")
+    st.title("Shiksha Sangam")
+    st.write(
+        "Welcome to Your Academic Helper! This powerful tool seamlessly integrates advanced chat capabilities "
+        "for PDF documents and a YouTube video Summarizer, along with Gesture-Based Math Solver , Plagarism detector and finally Find Resources section,"
+        " providing you with comprehensive study support. Engage in enlightening discussions with your PDFs "
+        ", while the Summarizer distills extensive videos into essential points for "
+        "effortless understanding and finally Find Resources section, where you can effortlessly discover "
+        "relevant links and materials related to your provided topic. Tailored for students and researchers alike, "
+        "our platform serves as an "
+        "indispensable resource, facilitating efficient studying and improved comprehension.")
+    option = st.radio("Choose an option:", ("Multiple PDF Chat", "YouTube Summarizer","Gesture Math Solver", "PDF Summarization","AI Plagiarism Detector", "Find Resources"))
 
-    st.title("🌟 Shiksha Sangam 🌟")
-    st.markdown(
-        """
-        Welcome to **Your Academic Helper!** This powerful tool seamlessly integrates advanced chat capabilities 
-        for PDF documents, YouTube video Summarizer, Find Resources section and PDF Summarizer,
-        providing you with comprehensive study support. Engage in enlightening discussions with your PDFs,
-        while the Summarizer distills extensive videos into essential points for effortless understanding.
-        Finally, use the Find Resources section to effortlessly discover relevant links and materials related 
-        to your provided topic. Tailored for students and researchers alike, our platform serves as an 
-        indispensable resource, facilitating efficient studying and improved comprehension.
-        """
-    )
-
-    menu_options = ["Multiple PDF Chat", "YouTube Summarizer", "Find Resources", "PDF Summarization"]
-    selected_option = st.selectbox("Choose an option:", menu_options)
-
-    if selected_option == "Multiple PDF Chat":
-        st.header("💬 Chat with Multiple PDFs")
+    if option == "Multiple PDF Chat":
+        st.header("Chat with Multiple PDF's")
         user_question = st.text_input("Enter Any Topic From the PDF")
 
         if user_question:
             user_input(user_question)
 
         with st.sidebar:
-            st.header("📑 PDF Menu")
+            st.title("Menu:")
             pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button",
                                         accept_multiple_files=True)
             if st.button("Submit & Process"):
@@ -190,8 +185,8 @@ def main():
                     get_vector_store(text_chunks)
                     st.success("Done")
 
-    elif selected_option == "YouTube Summarizer":
-        st.header("📺 Get Detailed Notes and Summaries From YouTube Videos")
+    elif option == "YouTube Summarizer":
+        st        .header("Get Detailed Notes and Summaries From YouTube Videos")
         youtube_link = st.text_input("Enter YouTube Video Link:")
 
         if st.button("Get Detailed Notes"):
@@ -199,30 +194,30 @@ def main():
                 transcript_text = extract_transcript_details(youtube_link)
                 if transcript_text:
                     summary = generate_gemini_content(transcript_text, prompt_youtube)
-                    st.markdown("## 📋 Detailed Notes:")
+                    st.markdown("## Detailed Notes:")
                     st.write(summary)
             except Exception as e:
                 st.error(f"Error retrieving transcript or generating summary: {e}")
 
-    elif selected_option == "Find Resources":
-        st.header("🔍 Find Resources")
+    elif option == "Find Resources":
+        st.header("Find Resources")
         topic = st.text_input("Enter a Topic:")
         if st.button("Search"):
             wikipedia_summary, wikipedia_url = search_wikipedia(topic)
             if wikipedia_url:
-                st.markdown("### 📖 Wikipedia Summary:")
+                st.markdown(f"### Wikipedia Summary:")
                 st.write(wikipedia_summary)
                 st.markdown(f"[Link to Wikipedia Article]({wikipedia_url})")
             else:
                 st.write(wikipedia_summary)
 
             google_links = search_google(topic)
-            st.markdown("### 🌐 Google Search Results:")
+            st.markdown("### Google Search Results:")
             for link in google_links:
                 st.markdown(f"[{link}]({link})")
 
-    elif selected_option == "PDF Summarization":
-        st.header("📝 PDF Summarization")
+    elif option == "PDF Summarization":
+        st.header("PDF Summarization")
         uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
         if uploaded_file is not None:
@@ -230,6 +225,43 @@ def main():
                 summary = generate_pdf_summary(uploaded_file)
                 st.write("Summary:", summary)
 
+    elif option == "Gesture Math Solver":
+        # Call the gesture math solver function from gesture_math.py
+        run_gesture_math_solver()
+    elif option == "AI Plagiarism Detector":
+    # Create a text area for user input
+        text_area = st.text_area("Enter text to analyze:", "")
+
+        if text_area:
+            if st.button("Analyze"):
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col1:
+                    st.info("Your Input Text")
+                    st.success(text_area)
+
+                with col2:
+                    st.info("Detection Score")
+                    perplexity = calculate_perplexity(text_area)  # Update this if you have a specific model
+                    burstiness_score = calculate_burstiness(text_area)
+
+                    st.write("Perplexity:", perplexity)
+                    st.write("Burstiness Score:", burstiness_score)
+
+                    if perplexity > 30000 and burstiness_score < 0.2:
+                        st.error("Text Analysis Result: AI-generated content")
+                    else:
+                        st.success("Text Analysis Result: Likely not generated by AI")
+
+                    st.warning(
+                        "Disclaimer: AI plagiarism detector apps can assist in identifying potential instances of plagiarism; however, it is important to note that their results may not be entirely flawless or completely reliable. These tools employ advanced algorithms, but they can still produce false positives or false negatives. Therefore, it is recommended to use AI plagiarism detectors as a supplementary tool alongside human judgment and manual verification for accurate and comprehensive plagiarism detection."
+                    )
+
+                with col3:
+                    st.info("Basic Details")
+                    plot_top_repeated_words(text_area)  # Implement the plotting function
+
+
 
 if __name__ == "__main__":
     main()
+
